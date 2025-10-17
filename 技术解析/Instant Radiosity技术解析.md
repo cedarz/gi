@@ -325,7 +325,284 @@ if (roughVisibilityTest(hit.position, vpl.position)) {
 
 ## 现代发展与变体
 
-### 1. Many-Light Methods
+### 1. Bidirectional Instant Radiosity (BIR)
+
+**核心思想**：结合双向路径追踪的思想，从光源和相机同时生成VPL。
+
+#### 算法原理
+
+**传统IR问题**：
+- 只从光源追踪生成VPL
+- 某些光传输路径难以找到（如通过小孔的光线）
+- 对复杂几何的采样效率低
+
+**BIR解决方案**：
+```cpp
+struct BidirectionalVPL {
+    // 光源侧VPL (Light VPL)
+    vector<VPL> lightVPLs;
+    
+    // 相机侧VPL (Eye VPL) 
+    vector<VPL> eyeVPLs;
+    
+    // 连接权重
+    vector<vector<float>> connectionWeights;
+};
+
+BidirectionalVPL generateBidirectionalVPLs(Scene& scene, int numPaths) {
+    BidirectionalVPL result;
+    
+    for (int i = 0; i < numPaths; i++) {
+        // 1. 从光源追踪生成Light VPLs
+        vector<VPL> lightPath = traceLightPath(scene);
+        result.lightVPLs.insert(result.lightVPLs.end(), 
+                               lightPath.begin(), lightPath.end());
+        
+        // 2. 从相机追踪生成Eye VPLs  
+        vector<VPL> eyePath = traceEyePath(scene);
+        result.eyeVPLs.insert(result.eyeVPLs.end(),
+                             eyePath.begin(), eyePath.end());
+        
+        // 3. 计算所有可能的连接
+        for (int s = 0; s < lightPath.size(); s++) {
+            for (int t = 0; t < eyePath.size(); t++) {
+                float weight = computeConnectionWeight(lightPath[s], eyePath[t]);
+                result.connectionWeights[s][t] = weight;
+            }
+        }
+    }
+    
+    return result;
+}
+```
+
+#### 多重重要性采样(MIS)
+
+**关键**：正确计算每种连接策略的权重。
+
+```cpp
+float computeConnectionWeight(const VPL& lightVPL, const VPL& eyeVPL) {
+    // 计算连接的几何项
+    vec3 direction = eyeVPL.position - lightVPL.position;
+    float distance = length(direction);
+    direction /= distance;
+    
+    float cosLight = dot(lightVPL.normal, direction);
+    float cosEye = dot(eyeVPL.normal, -direction);
+    
+    if (cosLight <= 0 || cosEye <= 0) return 0;
+    
+    // 可见性测试
+    if (!scene.isVisible(lightVPL.position, eyeVPL.position)) return 0;
+    
+    // 计算所有采样策略的PDF
+    float pdfLight = computeLightPathPDF(lightVPL);
+    float pdfEye = computeEyePathPDF(eyeVPL);
+    float pdfConnection = cosLight * cosEye / (distance * distance);
+    
+    // MIS权重 (Balance Heuristic)
+    float weight = 1.0f / (pdfLight + pdfEye + pdfConnection);
+    
+    return weight;
+}
+```
+
+#### 优势与应用
+
+**优势**：
+- 更好地处理复杂光传输路径
+- 减少某些场景的方差
+- 自动适应场景特征
+
+**适用场景**：
+- 间接光照占主导的室内场景
+- 复杂几何（如门缝、小窗户）
+- 焦散与间接光照并存的场景
+
+---
+
+### 2. Metropolis Instant Radiosity (MIR)
+
+**核心思想**：使用Metropolis采样改进VPL生成，专注于重要的光传输路径。
+
+#### 算法原理
+
+**传统IR问题**：
+- VPL分布可能不均匀
+- 重要区域采样不足
+- 难以自适应场景复杂度
+
+**MIR解决方案**：
+
+```cpp
+class MetropolisVPLSampler {
+private:
+    vector<VPL> currentVPLs;
+    float currentContribution;
+    
+public:
+    vector<VPL> generateVPLs(Scene& scene, int numSamples) {
+        // 1. 初始化种子路径
+        currentVPLs = generateSeedVPLs(scene);
+        currentContribution = evaluateContribution(currentVPLs);
+        
+        vector<VPL> acceptedVPLs;
+        int acceptedCount = 0;
+        
+        for (int i = 0; i < numSamples; i++) {
+            // 2. 提议新的VPL配置
+            vector<VPL> proposedVPLs = mutateVPLs(currentVPLs);
+            float proposedContribution = evaluateContribution(proposedVPLs);
+            
+            // 3. Metropolis接受/拒绝
+            float acceptanceProbability = min(1.0f, 
+                proposedContribution / currentContribution);
+            
+            if (random() < acceptanceProbability) {
+                // 接受新配置
+                currentVPLs = proposedVPLs;
+                currentContribution = proposedContribution;
+                acceptedCount++;
+            }
+            
+            // 4. 记录当前状态
+            acceptedVPLs.insert(acceptedVPLs.end(),
+                               currentVPLs.begin(), currentVPLs.end());
+        }
+        
+        return acceptedVPLs;
+    }
+    
+private:
+    vector<VPL> mutateVPLs(const vector<VPL>& vpls) {
+        vector<VPL> mutated = vpls;
+        
+        // 随机选择突变策略
+        int strategy = randomInt(0, 3);
+        
+        switch (strategy) {
+            case 0: // 位置扰动
+                perturbPosition(mutated);
+                break;
+            case 1: // 方向扰动  
+                perturbDirection(mutated);
+                break;
+            case 2: // 添加/删除VPL
+                addRemoveVPL(mutated);
+                break;
+            case 3: // 路径长度变化
+                changePathLength(mutated);
+                break;
+        }
+        
+        return mutated;
+    }
+    
+    void perturbPosition(vector<VPL>& vpls) {
+        if (vpls.empty()) return;
+        
+        int index = randomInt(0, vpls.size());
+        VPL& vpl = vpls[index];
+        
+        // 在表面上随机扰动
+        vec3 tangent, bitangent;
+        buildOrthonormalBasis(vpl.normal, tangent, bitangent);
+        
+        float radius = 0.01f; // 扰动半径
+        float theta = random() * 2 * PI;
+        float r = sqrt(random()) * radius;
+        
+        vec3 offset = r * cos(theta) * tangent + r * sin(theta) * bitangent;
+        vpl.position += offset;
+    }
+    
+    float evaluateContribution(const vector<VPL>& vpls) {
+        // 评估VPL配置对图像的总贡献
+        float totalContribution = 0;
+        
+        // 在关键像素上采样评估
+        for (int i = 0; i < numEvaluationPixels; i++) {
+            vec2 pixel = evaluationPixels[i];
+            Ray ray = camera.generateRay(pixel);
+            
+            RayHit hit = scene.intersect(ray);
+            if (hit.valid) {
+                for (const VPL& vpl : vpls) {
+                    totalContribution += luminance(
+                        computeVPLContribution(hit, vpl));
+                }
+            }
+        }
+        
+        return totalContribution;
+    }
+};
+```
+
+#### Primary Sample Space MLT
+
+**更高级的变体**：在主样本空间进行突变。
+
+```cpp
+class PSSMLTVPLSampler {
+private:
+    vector<float> primarySamples; // 主样本空间
+    
+public:
+    vector<VPL> generateVPLs(int numSamples) {
+        vector<VPL> vpls;
+        
+        for (int i = 0; i < numSamples; i++) {
+            // 1. 突变主样本
+            mutatePrimarySamples();
+            
+            // 2. 从主样本生成VPL路径
+            vector<VPL> pathVPLs = generateVPLsFromSamples(primarySamples);
+            
+            // 3. Metropolis接受/拒绝
+            if (acceptPath(pathVPLs)) {
+                vpls.insert(vpls.end(), pathVPLs.begin(), pathVPLs.end());
+            }
+        }
+        
+        return vpls;
+    }
+    
+private:
+    void mutatePrimarySamples() {
+        // Kelemen突变策略
+        for (float& sample : primarySamples) {
+            float s1 = random();
+            float s2 = random();
+            
+            // 大突变 vs 小突变
+            if (s2 < largeMutationProb) {
+                sample = s1; // 大突变：完全随机
+            } else {
+                // 小突变：正态分布扰动
+                float delta = normalDistribution(0, mutationSize);
+                sample = fmod(sample + delta + 1.0f, 1.0f);
+            }
+        }
+    }
+};
+```
+
+#### 优势与挑战
+
+**优势**：
+- 自动聚焦于重要的光传输路径
+- 减少困难场景的方差
+- 理论上的渐近正确性
+
+**挑战**：
+- 启动偏差（burn-in period）
+- 相关性问题（样本间不独立）
+- 调参复杂（突变策略、接受率）
+
+---
+
+### 3. Many-Light Methods
 
 **核心思想**：将IR扩展到处理数百万个光源。
 
@@ -334,23 +611,66 @@ if (roughVisibilityTest(hit.position, vpl.position)) {
 - **Lightslice**: 基于切片的光源选择
 - **Matrix Row-Column Sampling**: 矩阵采样技术
 
-### 2. ReSTIR (2020)
+### 4. ReSTIR (2020)
 
 **突破**：使用重要性重采样技术，1-2个样本达到高质量。
 
 **与IR的关系**：
 ```
 Instant Radiosity (1997)
-    ↓ 采样优化
+    ↓ 双向扩展
+Bidirectional Instant Radiosity (2001)
+    ↓ MCMC采样
+Metropolis Instant Radiosity (2002)
+    ↓ 现代重采样
 Reservoir-based Spatiotemporal Importance Resampling (2020)
 ```
 
-### 3. 硬件加速
+### 5. 硬件加速
 
 **现代GPU优化**：
 - **RT Cores**: 硬件加速可见性测试
 - **Compute Shaders**: 并行VPL生成
 - **Temporal Accumulation**: 时域降噪
+
+---
+
+## 推荐学习资源
+
+### 核心论文
+- 📄 **"Instant Radiosity"** - Alexander Keller (SIGGRAPH 1997) ⭐开创性工作
+  - [论文链接](https://doi.org/10.1145/258734.258769)
+- 📄 **"Instant Radiosity for Real-Time Indirect Illumination"** - Laine et al. (EGSR 2008)
+- 📄 **"Incremental Instant Radiosity"** - Dachsbacher et al. (EGSR 2009)
+- 📄 **"Unbiased Global Illumination with Participating Media"** - Raab et al. (2008)
+  - VPL方法在体积介质中的无偏扩展
+
+### 高级变体论文
+- 📄 **"Bidirectional Instant Radiosity"** - Segovia et al. (2006)
+  - 双向VPL生成，处理复杂光传输路径
+- 📄 **"Metropolis Instant Radiosity"** - Segovia et al. (2007) 
+  - MCMC采样改进VPL分布
+- 📄 **"A Simple and Robust Mutation Strategy for the Metropolis Light Transport Algorithm"** - Kelemen et al. (2002)
+  - Primary Sample Space MLT的基础
+- 📄 **"Robust Monte Carlo Methods for Light Transport Simulation"** - Veach PhD Thesis (1997)
+  - 双向方法和MIS的理论基础
+
+### 现代发展
+- 📄 **"Spatiotemporal Reservoir Resampling for Real-Time Ray Tracing"** - Bitterli et al. (SIGGRAPH 2020)
+  - ReSTIR：现代VPL重要性重采样
+- 📄 **"Many-Light Real Time Global Illumination using Light Cuts"** - Walter et al. (SIGGRAPH 2005)
+  - Many-Light方法的开创性工作
+
+### 实现代码
+- 💻 **本项目**: `code/ir.py` - 完整Python实现
+- 💻 **PBRT**: [GitHub](https://github.com/mmp/pbrt-v4) - 参考实现
+- 💻 **Mitsuba**: [GitHub](https://github.com/mitsuba-renderer/mitsuba3) - 研究级实现
+
+### 教材与课程
+- 📚 **"Advanced Global Illumination"** - Dutré et al., Chapter 6
+- 📚 **"Physically Based Rendering"** - Pharr et al., Chapter 15
+- 🎓 **GAMES202** - 高质量实时渲染 (闫令琪)
+- 🎓 **CS348B** - Computer Graphics (Stanford)
 
 ---
 
