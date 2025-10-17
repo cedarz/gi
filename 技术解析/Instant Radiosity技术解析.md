@@ -24,17 +24,26 @@ GI算法发展时间线：
 1997  Instant Radiosity ⭐
       └─ VPL概念诞生
          │
+         ├─ 2001: Bidirectional Instant Radiosity
+         │        └─ 双向VPL生成，处理复杂光传输
+         │
+         ├─ 2002: Metropolis Instant Radiosity  
+         │        └─ MCMC采样改进VPL分布
+         │
          ├─ 2005: Reflective Shadow Maps
-         │        └─ VPL实时化
+         │        └─ VPL实时化突破
          │           │
          │           ├─ 2009: Light Propagation Volumes
          │           ├─ 2011: Voxel Cone Tracing
          │           └─ 2020: ReSTIR (重要性重采样VPL)
          │
-         ├─ 2008: Unbiased GI with Participating Media
-         │        └─ VPL扩展到体积
+         ├─ 2005: Many-Light Methods (Light Cuts)
+         │        └─ 大规模VPL处理
          │
-         └─ 现代变体: Many-Light Methods
+         ├─ 2008: Unbiased GI with Participating Media
+         │        └─ VPL扩展到体积介质
+         │
+         └─ 现代发展: GPU加速、硬件光追
 ```
 
 ---
