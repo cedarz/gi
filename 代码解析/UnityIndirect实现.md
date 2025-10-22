@@ -1,43 +1,43 @@
-half4 BRDF1_Unity_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
-float3 normal, float3 viewDir,
-UnityLight light, UnityIndirect gi)
-中的UnityIndirect gi，具体实现
+# Unity PBS 中的 UnityIndirect 实现
 
-14:47
-
-Claude-Sonnet-4.5
-
+> **问题：** `half4 BRDF1_Unity_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness, float3 normal, float3 viewDir, UnityLight light, UnityIndirect gi)` 中的UnityIndirect gi，具体实现
+> 
+> **时间：** 14:47
 
 UnityIndirect gi 参数包含了Unity中的间接光照信息。让我详细解释其具体实现和组成部分：
 
-UnityIndirect 结构体定义
-hlsl
+## UnityIndirect 结构体定义
 
+```hlsl
 struct UnityIndirect
 {
     half3 diffuse;   // 间接漫反射光照
     half3 specular;  // 间接镜面反射光照
 };
-具体实现来源
+```
+## 具体实现来源
+
 在Unity的PBS着色器中，UnityIndirect gi 的数据主要来自以下几个方面：
 
-1. 间接漫反射 (gi.diffuse)
-hlsl
+### 1. 间接漫反射 (gi.diffuse)
 
+```hlsl
 // 从光照探针或光照贴图获取
 half3 ambient = ShadeSHPerPixel(normal, ambient, worldPos);
 // 或者
 half3 ambient = DecodeLightmap(UNITY_SAMPLE_TEX2D(unity_Lightmap, uv));
 
 gi.diffuse = ambient;
-数据来源：
+```
 
-光照探针 (Light Probes): 使用球谐函数(Spherical Harmonics)存储的预计算环境光
-光照贴图 (Lightmaps): 烘焙的静态光照信息
-环境光 (Ambient Light): 场景的基础环境光颜色
-2. 间接镜面反射 (gi.specular)
-hlsl
+**数据来源：**
+- 光照探针 (Light Probes): 使用球谐函数(Spherical Harmonics)存储的预计算环境光
+- 光照贴图 (Lightmaps): 烘焙的静态光照信息
+- 环境光 (Ambient Light): 场景的基础环境光颜色
 
+### 2. 间接镜面反射 (gi.specular)
+
+```hlsl
 // 从反射探针采样
 half3 reflectVec = reflect(-viewDir, normal);
 half perceptualRoughness = SmoothnessToPerceptualRoughness(smoothness);
@@ -45,14 +45,15 @@ half mip = PerceptualRoughnessToMipmapLevel(perceptualRoughness);
 
 half4 envSample = UNITY_SAMPLE_TEXCUBE_LOD(unity_SpecCube0, reflectVec, mip);
 gi.specular = DecodeHDR(envSample, unity_SpecCube0_HDR);
-数据来源：
+```
 
-反射探针 (Reflection Probes): 立方体贴图存储的环境反射
-天空盒 (Skybox): 作为默认的反射源
-根据粗糙度选择Mipmap级别: 越粗糙的表面采样越模糊的Mip级别
-完整的GI计算示例
-hlsl
+**数据来源：**
+- 反射探针 (Reflection Probes): 立方体贴图存储的环境反射
+- 天空盒 (Skybox): 作为默认的反射源
+- 根据粗糙度选择Mipmap级别: 越粗糙的表面采样越模糊的Mip级别
+## 完整的GI计算示例
 
+```hlsl
 UnityIndirect FragmentGI(FragmentCommonData s, half occlusion, half4 i_ambientOrLightmapUV, 
                          half atten, UnityLight light)
 {
@@ -89,6 +90,7 @@ UnityIndirect FragmentGI(FragmentCommonData s, half occlusion, half4 i_ambientOr
 
     return gi;
 }
+```
 关键函数说明
 UnityGIIndirectSpecular:
 
@@ -123,31 +125,31 @@ UnityIndirect gi 的实现包含：
 HDR解码: 使用RGBM格式存储和解码高动态范围的光照数据
 这些数据在BRDF计算中用于模拟物体接收到的环境光照，是实现物理真实感渲染的重要组成部分。
 
-14:47
+---
 
-unity的pbs的ibl，在哪里
-
-17:09
-
-Claude-Sonnet-4.5
+> **问题：** unity的pbs的ibl，在哪里
+> 
+> **时间：** 17:09
 
 
 Unity的PBS中IBL（Image-Based Lighting）相关代码主要在以下位置：
 
-1. 核心IBL代码位置
-主要文件路径：
-awk
+### 1. 核心IBL代码位置
 
+**主要文件路径：**
+
+```
 [Unity安装目录]/Editor/Data/CGIncludes/
 ├── UnityGlobalIllumination.cginc      // GI和IBL的主要实现
 ├── UnityImageBasedLighting.cginc      // IBL核心函数
 ├── UnityStandardBRDF.cginc            // BRDF相关
 └── UnityPBSLighting.cginc             // PBS光照模型
-具体文件说明：
-UnityImageBasedLighting.cginc - IBL的核心实现文件
+```
+**具体文件说明：**
 
-hlsl
+#### UnityImageBasedLighting.cginc - IBL的核心实现文件
 
+```hlsl
 // 关键函数包括：
 
 // 1. 预积分的BRDF LUT采样
@@ -165,10 +167,10 @@ half perceptualRoughnessToMipmapLevel(half perceptualRoughness)
 {
     return perceptualRoughness * UNITY_SPECCUBE_LOD_STEPS;
 }
-UnityGlobalIllumination.cginc - GI和间接光照
+```
+#### UnityGlobalIllumination.cginc - GI和间接光照
 
-hlsl
-
+```hlsl
 // 关键函数：
 
 // 1. 获取间接镜面反射
@@ -184,26 +186,31 @@ UnityGI UnityGlobalIllumination(
     half occlusion, 
     half3 normalWorld
 )
-2. 实际项目中的访问路径
+```
+### 2. 实际项目中的访问路径
+
 如果你使用Unity Hub安装，路径通常是：
 
-Windows:
-
-
+**Windows:**
+```
 C:/Program Files/Unity/Hub/Editor/[版本号]/Editor/Data/CGIncludes/
-Mac:
+```
 
-
+**Mac:**
+```
 /Applications/Unity/Hub/Editor/[版本号]/Unity.app/Contents/CGIncludes/
-Linux:
+```
 
-awk
-
+**Linux:**
+```
 /home/[用户名]/Unity/Hub/Editor/[版本号]/Editor/Data/Resources/CGIncludes/
-3. IBL的具体实现代码示例
+```
+
+### 3. IBL的具体实现代码示例
+
 在 UnityImageBasedLighting.cginc 中：
 
-hlsl
+```hlsl
 
 // IBL镜面反射的核心实现
 half3 Unity_GlossyEnvironment (UNITY_ARGS_TEXCUBE(tex), half4 hdr, Unity_GlossyEnvironmentData glossIn)
@@ -232,11 +239,11 @@ half mipmapLevelToPerceptualRoughness(half mipmapLevel)
 {
     return mipmapLevel / UNITY_SPECCUBE_LOD_STEPS;
 }
-4. Standard Shader中的IBL调用
+### 4. Standard Shader中的IBL调用
+
 在 UnityStandardCore.cginc 中：
 
-hlsl
-
+```hlsl
 half4 fragForwardBaseInternal (VertexOutputForwardBase i)
 {
     // ... 省略其他代码 ...
@@ -264,9 +271,9 @@ half4 fragForwardBaseInternal (VertexOutputForwardBase i)
     
     return c;
 }
-5. 关键的IBL数据结构
-hlsl
+### 5. 关键的IBL数据结构
 
+```hlsl
 // 光泽环境数据
 struct Unity_GlossyEnvironmentData
 {
@@ -280,19 +287,19 @@ struct UnityIndirect
     half3 diffuse;          // 间接漫反射（从光照探针）
     half3 specular;         // 间接镜面反射（从反射探针，即IBL）
 };
-6. 如何查看和修改
+```
+### 6. 如何查看和修改
+
 如果你想查看或修改IBL实现：
 
-Built-in RP: 直接修改上述CGIncludes文件（不推荐）
+- **Built-in RP**: 直接修改上述CGIncludes文件（不推荐）
 
-URP/HDRP:
+- **URP/HDRP**:
+  - **URP**: `Packages/com.unity.render-pipelines.universal/ShaderLibrary/`
+  - **HDRP**: `Packages/com.unity.render-pipelines.high-definition/Runtime/Lighting/`
+**推荐方式**: 创建自定义Shader，包含这些文件后重写相关函数
 
-URP: Packages/com.unity.render-pipelines.universal/ShaderLibrary/
-HDRP: Packages/com.unity.render-pipelines.high-definition/Runtime/Lighting/
-推荐方式: 创建自定义Shader，包含这些文件后重写相关函数
-
-hlsl
-
+```hlsl
 #include "UnityPBSLighting.cginc"
 #include "UnityImageBasedLighting.cginc"
 
@@ -311,19 +318,17 @@ half3 CustomIBL(...)
 }
 这样你就可以找到并理解Unity PBS中IBL的完整实现了。
 
-17:09
+---
 
-UnityGI_IndirectSpecular功能
-
-17:18
-
-Claude-Sonnet-4.5
-
+> **问题：** UnityGI_IndirectSpecular功能
+> 
+> **时间：** 17:18
 
 UnityGI_IndirectSpecular 是Unity中计算间接镜面反射光照的核心函数，它是IBL（Image-Based Lighting）中处理镜面反射的关键部分。
 
-函数签名
-hlsl
+## 函数签名
+
+```hlsl
 
 inline half3 UnityGI_IndirectSpecular(
     UnityGIInput data, 
@@ -406,10 +411,11 @@ inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, Unity_G
     // 应用遮挡
     return specular * occlusion;
 }
-详细功能分解
-1. 盒投影校正 (Box Projection)
-hlsl
+## 详细功能分解
 
+### 1. 盒投影校正 (Box Projection)
+
+```hlsl
 half3 BoxProjectedCubemapDirection(
     half3 worldRefl, 
     float3 worldPos, 
@@ -442,11 +448,11 @@ half3 BoxProjectedCubemapDirection(
     }
     return worldRefl;
 }
-作用：修正反射方向，使反射看起来更真实，特别是在室内或封闭空间中。
+**作用**：修正反射方向，使反射看起来更真实，特别是在室内或封闭空间中。
 
-2. 环境采样 (Unity_GlossyEnvironment)
-hlsl
+### 2. 环境采样 (Unity_GlossyEnvironment)
 
+```hlsl
 half3 Unity_GlossyEnvironment(
     UNITY_ARGS_TEXCUBE(tex), 
     half4 hdr, 
@@ -472,19 +478,24 @@ half3 Unity_GlossyEnvironment(
 }
 关键点：
 
-粗糙度 → Mipmap级别：越粗糙的表面采样越模糊的Mip级别
-RGBM解码：反射探针使用RGBM格式存储HDR数据
-3. 反射探针混合
+- **粗糙度 → Mipmap级别**：越粗糙的表面采样越模糊的Mip级别
+- **RGBM解码**：反射探针使用RGBM格式存储HDR数据
+
+### 3. 反射探针混合
+
 当物体处于两个反射探针的边界时，Unity会混合两个探针的结果：
 
-hlsl
-
+```hlsl
 specular = lerp(env1, env0, blendLerp);
+```
+
 这确保了探针之间的平滑过渡。
 
-输入参数详解
-UnityGIInput data
-hlsl
+## 输入参数详解
+
+### UnityGIInput data
+
+```hlsl
 
 struct UnityGIInput
 {
@@ -539,17 +550,21 @@ half3 specular = UnityGI_IndirectSpecular(
 
 // 4. 应用到最终光照
 gi.indirect.specular = specular;
-关键技术点
-1. 粗糙度到Mipmap的映射
-hlsl
+## 关键技术点
 
+### 1. 粗糙度到Mipmap的映射
+
+```hlsl
 // UNITY_SPECCUBE_LOD_STEPS 通常是 6
 half mip = perceptualRoughness * UNITY_SPECCUBE_LOD_STEPS;
-粗糙度 0.0 → Mip 0（最清晰的反射）
-粗糙度 1.0 → Mip 6（最模糊的反射）
-2. HDR解码
-hlsl
+```
 
+- **粗糙度 0.0** → Mip 0（最清晰的反射）
+- **粗糙度 1.0** → Mip 6（最模糊的反射）
+
+### 2. HDR解码
+
+```hlsl
 inline half3 DecodeHDR(half4 data, half4 decodeInstructions)
 {
     // 从RGBM格式解码
@@ -557,36 +572,38 @@ inline half3 DecodeHDR(half4 data, half4 decodeInstructions)
     half alpha = decodeInstructions.w * (data.a - 1.0) + 1.0;
     return (decodeInstructions.x * pow(alpha, decodeInstructions.y)) * data.rgb;
 }
-3. 性能优化
-使用 UNITY_BRANCH 进行分支优化
-只在需要时才计算第二个探针的混合
-通过Mipmap预滤波避免实时积分
-总结
+### 3. 性能优化
+
+- 使用 `UNITY_BRANCH` 进行分支优化
+- 只在需要时才计算第二个探针的混合
+- 通过Mipmap预滤波避免实时积分
+## 总结
+
 UnityGI_IndirectSpecular 的核心功能：
 
-✅ 从反射探针采样环境反射
-✅ 根据粗糙度选择合适的Mipmap级别（模拟不同粗糙度表面的模糊反射）
-✅ 盒投影校正（提高室内反射的真实感）
-✅ 多探针混合（平滑过渡）
-✅ 应用遮挡（AO影响反射强度）
-✅ HDR解码（支持高动态范围）
+- ✅ 从反射探针采样环境反射
+- ✅ 根据粗糙度选择合适的Mipmap级别（模拟不同粗糙度表面的模糊反射）
+- ✅ 盒投影校正（提高室内反射的真实感）
+- ✅ 多探针混合（平滑过渡）
+- ✅ 应用遮挡（AO影响反射强度）
+- ✅ HDR解码（支持高动态范围）
+
 这是Unity实现物理真实感渲染（PBS）中IBL镜面反射的核心实现，使得物体能够真实地反射周围环境。
 
-17:18
+---
 
-unity 中的光照探针 (Light Probes)，使用什么技术/模块生成的？在shader中哪里使用了？
+> **问题：** unity 中的光照探针 (Light Probes)，使用什么技术/模块生成的？在shader中哪里使用了？
+> 
+> **时间：** 17:28
 
-17:28
+## Unity光照探针（Light Probes）技术详解
 
-Claude-Sonnet-4.5
+### 一、光照探针的生成技术
 
-
-Unity光照探针（Light Probes）技术详解
-一、光照探针的生成技术
-1. 球谐函数（Spherical Harmonics, SH）
+#### 1. 球谐函数（Spherical Harmonics, SH）
 Unity使用球谐函数来存储和表示光照探针数据。这是光照探针的核心技术。
 
-hlsl
+```hlsl
 
 // Unity使用3阶球谐函数（9个系数）存储每个颜色通道
 // 总共27个系数（RGB各9个）
@@ -599,44 +616,47 @@ uniform half4 unity_SHBr;  // R通道的SH系数 (L2)
 uniform half4 unity_SHBg;  // G通道的SH系数 (L2)
 uniform half4 unity_SHBb;  // B通道的SH系数 (L2)
 uniform half4 unity_SHC;   // 额外的SH系数
-2. 烘焙流程
+### 2. 烘焙流程
+
 光照探针在烘焙时通过以下步骤生成：
 
+#### 1. 场景设置
+- 手动放置 Light Probe Group
 
-1. 场景设置
-   └─> 手动放置 Light Probe Group
+#### 2. 烘焙过程（Lighting > Generate Lighting）
+- 对每个探针位置
+  - 在球面上采样多个方向（通常数百个）
+  - 对每个方向追踪光线（路径追踪）
+  - 收集来自该方向的光照
+  - 累积所有方向的光照信息
+- 将采样结果拟合到球谐函数
+  - 生成9个SH系数（每个颜色通道）
 
-2. 烘焙过程（Lighting > Generate Lighting）
-   ├─> 对每个探针位置
-   │   ├─> 在球面上采样多个方向（通常数百个）
-   │   ├─> 对每个方向追踪光线（路径追踪）
-   │   ├─> 收集来自该方向的光照
-   │   └─> 累积所有方向的光照信息
-   │
-   └─> 将采样结果拟合到球谐函数
-       └─> 生成9个SH系数（每个颜色通道）
+#### 3. 运行时插值
+- 根据物体位置在多个探针间插值
 
-3. 运行时插值
-   └─> 根据物体位置在多个探针间插值
-3. 使用的烘焙引擎
+### 3. 使用的烘焙引擎
+
 Unity支持多种烘焙后端：
 
-Enlighten（旧版，已弃用）
-Progressive GPU/CPU Lightmapper（Unity 2019+）
-GPU Lightmapper（Unity 2020+，推荐）
-二、Shader中的使用位置
-1. 主要使用文件
-reasonml
+- **Enlighten**（旧版，已弃用）
+- **Progressive GPU/CPU Lightmapper**（Unity 2019+）
+- **GPU Lightmapper**（Unity 2020+，推荐）
 
+## 二、Shader中的使用位置
+### 1. 主要使用文件
+
+```
 CGIncludes/
 ├── UnityCG.cginc                    // 基础SH函数
 ├── UnityShaderVariables.cginc       // SH变量声明
 ├── UnityStandardCore.cginc          // Standard Shader中的使用
 └── UnityGlobalIllumination.cginc    // GI相关函数
-2. 核心SH评估函数
+### 2. 核心SH评估函数
+
 在 UnityCG.cginc 中：
 
-hlsl
+```hlsl
 
 // ============ 主要的SH评估函数 ============
 
@@ -687,11 +707,11 @@ half3 ShadeSH9(half4 normal)
 
     return res;
 }
-3. 逐像素SH评估
+### 3. 逐像素SH评估
+
 在 UnityGlobalIllumination.cginc 中：
 
-hlsl
-
+```hlsl
 // 逐像素评估SH，支持位置参数（用于插值）
 inline half3 ShadeSHPerPixel(half3 normal, half3 ambient, float3 worldPos)
 {
@@ -724,11 +744,11 @@ inline half3 ShadeSHPerPixel(half3 normal, half3 ambient, float3 worldPos)
 
     return ambient_contrib;
 }
-4. 顶点着色器中的SH评估
+### 4. 顶点着色器中的SH评估
+
 在 UnityStandardCore.cginc 中：
 
-hlsl
-
+```hlsl
 VertexOutputForwardBase vertForwardBase(VertexInput v)
 {
     VertexOutputForwardBase o;
@@ -754,11 +774,11 @@ VertexOutputForwardBase vertForwardBase(VertexInput v)
 
     return o;
 }
-5. 片段着色器中的使用
+### 5. 片段着色器中的使用
+
 在 UnityStandardCore.cginc 中：
 
-hlsl
-
+```hlsl
 half4 fragForwardBase(VertexOutputForwardBase i) : SV_Target
 {
     // ... 准备数据
@@ -773,10 +793,11 @@ half4 fragForwardBase(VertexOutputForwardBase i) : SV_Target
 
     // ... 使用gi.indirect.diffuse（包含SH光照）
 }
-6. FragmentGI函数实现
+### 6. FragmentGI函数实现
+
 在 UnityGlobalIllumination.cginc 中：
 
-hlsl
+```hlsl
 
 inline UnityGI FragmentGI(
     FragmentCommonData s,
@@ -819,9 +840,9 @@ inline UnityGI FragmentGI(
     // 调用主GI函数
     return UnityGlobalIllumination(d, occlusion, s.normalWorld, g);
 }
-7. UnityGlobalIllumination函数
-hlsl
+### 7. UnityGlobalIllumination函数
 
+```hlsl
 inline UnityGI UnityGlobalIllumination(
     UnityGIInput data,
     half occlusion,
@@ -832,6 +853,7 @@ inline UnityGI UnityGlobalIllumination(
     o_gi.indirect.specular = UnityGI_IndirectSpecular(data, occlusion, glossIn);
     return o_gi;
 }
+```
 
 inline UnityGI UnityGI_Base(UnityGIInput data, half occlusion, half3 normalWorld)
 {
@@ -872,12 +894,13 @@ inline UnityGI UnityGI_Base(UnityGIInput data, half occlusion, half3 normalWorld
     o_gi.indirect.diffuse *= occlusion;
     return o_gi;
 }
-三、Light Probe Proxy Volume (LPPV)
+## 三、Light Probe Proxy Volume (LPPV)
+
 对于大型动态物体，Unity提供了LPPV技术：
 
-1. LPPV采样函数
-hlsl
+### 1. LPPV采样函数
 
+```hlsl
 // 在 UnityStandardCore.cginc 中
 half3 SHEvalLinearL0L1_SampleProbeVolume(half4 N, float3 worldPos)
 {
@@ -1016,40 +1039,41 @@ SHEvalLinearL0L1() / SHEvalLinearL2() - SH基础评估
 高级特性：LPPV用于大型动态物体
 这套系统使得动态物体能够接收预烘焙的全局光照，是Unity实现高质量实时渲染的关键技术之一。
 
-17:28
+---
 
-unity 中的光照探针 (Light Probes)只提供diffuse？
+> **问题：** unity 中的光照探针 (Light Probes)只提供diffuse？
+> 
+> **时间：** 17:35
 
-17:35
+## Unity光照探针提供的光照类型
 
-Claude-Sonnet-4.5
-
-
-Unity光照探针提供的光照类型
-简短回答
+### 简短回答
 是的，光照探针（Light Probes）主要只提供漫反射（Diffuse）光照。
 
 镜面反射（Specular）光照由**反射探针（Reflection Probes）**提供。
 
-详细解释
-一、为什么光照探针只提供Diffuse？
+### 详细解释
+
+#### 一、为什么光照探针只提供Diffuse？
 这是基于物理和技术原因的设计决策：
 
-1. 物理原理差异
+#### 1. 物理原理差异
 
-漫反射（Diffuse）：
-├─ 与视角无关
-├─ 只依赖于表面法线
-├─ 光照在半球面上均匀分布
-└─ 可以用球谐函数（SH）很好地近似
+**漫反射（Diffuse）：**
+- 与视角无关
+- 只依赖于表面法线
+- 光照在半球面上均匀分布
+- 可以用球谐函数（SH）很好地近似
 
-镜面反射（Specular）：
-├─ 强烈依赖视角
-├─ 依赖于反射方向
-├─ 光照集中在特定方向
-└─ 需要立方体贴图（Cubemap）来存储
-2. 球谐函数的局限性
-hlsl
+**镜面反射（Specular）：**
+- 强烈依赖视角
+- 依赖于反射方向
+- 光照集中在特定方向
+- 需要立方体贴图（Cubemap）来存储
+
+#### 2. 球谐函数的局限性
+
+```hlsl
 
 // 球谐函数只能表示低频信息
 // 3阶SH（Unity使用的）只有9个系数
@@ -1080,9 +1104,9 @@ Unity将间接光照分为两个独立系统：
 三、在Shader中的实现证据
 让我们查看Unity Standard Shader的代码：
 
-1. FragmentGI函数
-hlsl
+### 1. FragmentGI函数
 
+```hlsl
 inline UnityGI FragmentGI(
     FragmentCommonData s,
     half occlusion,
@@ -1103,9 +1127,9 @@ inline UnityGI FragmentGI(
     // 调用主GI函数
     return UnityGlobalIllumination(d, occlusion, s.normalWorld, g);
 }
-2. UnityGlobalIllumination函数
-hlsl
+### 2. UnityGlobalIllumination函数
 
+```hlsl
 inline UnityGI UnityGlobalIllumination(
     UnityGIInput data,
     half occlusion,
@@ -1132,9 +1156,9 @@ inline UnityGI UnityGlobalIllumination(
     
     return o_gi;
 }
-3. UnityGI_Base函数（只处理Diffuse）
-hlsl
+### 3. UnityGI_Base函数（只处理Diffuse）
 
+```hlsl
 inline UnityGI UnityGI_Base(
     UnityGIInput data, 
     half occlusion, 
@@ -1171,9 +1195,9 @@ inline UnityGI UnityGI_Base(
     
     return o_gi;
 }
-4. UnityGI结构体
-hlsl
+### 4. UnityGI结构体
 
+```hlsl
 struct UnityGI
 {
     UnityLight light;
@@ -1187,6 +1211,7 @@ struct UnityIndirect
     half3 diffuse;   // 来自 Light Probes 或 Lightmap
     half3 specular;  // 来自 Reflection Probes
 };
+```
 四、数据结构对比
 Light Probes 数据
 hlsl
@@ -1228,10 +1253,11 @@ half3 specular = UNITY_SAMPLE_TEXCUBE_LOD(
 频率特性	低频	高频
 插值	快速（线性插值）	较慢（纹理采样）
 适用场景	动态物体的环境光	反射表面
-六、实际使用示例
-1. Standard Shader中的完整GI
-hlsl
+## 六、实际使用示例
 
+### 1. Standard Shader中的完整GI
+
+```hlsl
 half4 fragForwardBase(VertexOutputForwardBase i) : SV_Target
 {
     // 准备表面数据
@@ -1264,9 +1290,9 @@ half4 fragForwardBase(VertexOutputForwardBase i) : SV_Target
 
     return OutputForward(c, s.alpha);
 }
-2. 自定义Shader分别使用两种探针
-hlsl
+### 2. 自定义Shader分别使用两种探针
 
+```hlsl
 Shader "Custom/SeparateProbesExample"
 {
     SubShader
@@ -1344,22 +1370,27 @@ Shader "Custom/SeparateProbesExample"
         }
     }
 }
-七、为什么这样设计？
-1. 存储效率
-basic
+## 七、为什么这样设计？
+
+### 1. 存储效率
 
 假设场景中有 100 个 Light Probes：
 
-Light Probes 存储：
+**Light Probes 存储：**
+```
 100 × 27 floats × 4 bytes = 10.8 KB
+```
 
-如果用 Cubemap 存储（128×128，6面，RGBA16F）：
+**如果用 Cubemap 存储（128×128，6面，RGBA16F）：**
+```
 100 × (128×128×6×8 bytes) = 600 MB！
+```
 
-差距：55,000 倍！
-2. 性能考虑
-hlsl
+**差距：55,000 倍！**
 
+### 2. 性能考虑
+
+```hlsl
 // Light Probes 评估（Diffuse）
 // 只需要几个点积运算
 half3 diffuse = dot(unity_SHAr, half4(N, 1.0));  // 快速
@@ -1367,14 +1398,16 @@ half3 diffuse = dot(unity_SHAr, half4(N, 1.0));  // 快速
 // Reflection Probes 采样（Specular）
 // 需要纹理采样，有内存访问开销
 half3 specular = UNITY_SAMPLE_TEXCUBE_LOD(...);  // 相对慢
-3. 视觉需求
+```
 
-Diffuse：
+### 3. 视觉需求
+
+**Diffuse：**
 - 视觉上是平滑的
 - 不需要高频细节
 - SH已经足够好
 
-Specular：
+**Specular：**
 - 需要清晰的反射
 - 高频细节很重要
 - 必须用Cubemap
@@ -1412,66 +1445,69 @@ Unity 间接光照 = Light Probes (Diffuse) + Reflection Probes (Specular)
 
 17:35
 
-unity中的Reflection Probes是什么
+---
 
-17:37
+> **问题：** unity中的Reflection Probes是什么
+> 
+> **时间：** 17:37
 
-Claude-Sonnet-4.5
+## Unity中的Reflection Probes（反射探针）详解
 
-
-Unity中的Reflection Probes（反射探针）详解
-一、什么是Reflection Probes
+### 一、什么是Reflection Probes
 Reflection Probes（反射探针）是Unity中用于捕捉和存储环境反射信息的组件，为动态物体提供真实的镜面反射效果。
 
-核心概念
+### 核心概念
 
-Reflection Probe = 一个虚拟相机 + 立方体贴图（Cubemap）
+**Reflection Probe = 一个虚拟相机 + 立方体贴图（Cubemap）**
 
-工作原理：
+**工作原理：**
 1. 在特定位置放置一个探针
 2. 从该位置向6个方向（±X, ±Y, ±Z）渲染场景
 3. 将6张图片组合成一个Cubemap
 4. 动态物体根据其位置采样最近的Cubemap获得反射
-二、Reflection Probe的类型
+
+## 二、Reflection Probe的类型
+
 Unity提供三种类型的反射探针：
 
-1. Baked（烘焙）
+### 1. Baked（烘焙）
 
-特点：
-├─ 在编辑器中预先渲染
-├─ 运行时不更新
-├─ 性能开销：无（只是纹理采样）
-├─ 质量：高（可以高分辨率，多次采样）
-└─ 适用：静态场景反射
+**特点：**
+- 在编辑器中预先渲染
+- 运行时不更新
+- 性能开销：无（只是纹理采样）
+- 质量：高（可以高分辨率，多次采样）
+- 适用：静态场景反射
 
 使用场景：
 - 室内环境
 - 固定的室外场景
 - 性能敏感的移动平台
-2. Realtime（实时）
+### 2. Realtime（实时）
 
-特点：
-├─ 每帧或指定频率更新
-├─ 可以反射动态物体
-├─ 性能开销：高（每次更新需要6次渲染）
-├─ 质量：中（通常降低分辨率以保证性能）
-└─ 适用：需要动态反射的场景
+**特点：**
+- 每帧或指定频率更新
+- 可以反射动态物体
+- 性能开销：高（每次更新需要6次渲染）
+- 质量：中（通常降低分辨率以保证性能）
+- 适用：需要动态反射的场景
 
-使用场景：
+**使用场景：**
 - 镜子
 - 水面
 - 高度反射的动态物体
 - 展示类应用
-3. Custom（自定义）
 
-特点：
-├─ 手动控制更新时机
-├─ 可以通过脚本触发渲染
-├─ 性能开销：可控
-├─ 质量：可调
-└─ 适用：需要精确控制的场景
+### 3. Custom（自定义）
 
-使用场景：
+**特点：**
+- 手动控制更新时机
+- 可以通过脚本触发渲染
+- 性能开销：可控
+- 质量：可调
+- 适用：需要精确控制的场景
+
+**使用场景：**
 - 只在特定时刻需要更新反射
 - 过场动画
 - 按需更新的镜面
@@ -1514,10 +1550,11 @@ half3 DecodeHDR(half4 data, half4 decodeInstructions)
     half alpha = decodeInstructions.w * (data.a - 1.0) + 1.0;
     return (decodeInstructions.x * pow(alpha, decodeInstructions.y)) * data.rgb;
 }
-四、在Shader中的使用
-1. 相关变量声明
-hlsl
+## 四、在Shader中的使用
 
+### 1. 相关变量声明
+
+```hlsl
 // 在 UnityShaderVariables.cginc 中
 
 // ========================================
@@ -1543,9 +1580,9 @@ uniform half4 unity_SpecCube1_ProbePosition;
 // ========================================
 uniform half4 unity_SpecCube0_BoxMin;
 // .w 存储混合权重
-2. 核心采样函数
-hlsl
+### 2. 核心采样函数
 
+```hlsl
 // 在 UnityStandardCore.cginc 中
 
 inline half3 Unity_GlossyEnvironment(
@@ -1578,9 +1615,9 @@ inline half3 Unity_GlossyEnvironment(
     // ========================================
     return DecodeHDR(rgbm, hdr);
 }
-3. 粗糙度到Mipmap的转换
-hlsl
+### 3. 粗糙度到Mipmap的转换
 
+```hlsl
 // 在 UnityStandardCore.cginc 中
 
 inline half perceptualRoughnessToMipmapLevel(half perceptualRoughness)
@@ -1594,9 +1631,11 @@ inline half perceptualRoughnessToMipmapLevel(half perceptualRoughness)
 // 粗糙度 0.0 (镜面)  → Mip 0 (最清晰)
 // 粗糙度 0.5 (半粗糙) → Mip 3 (中等模糊)
 // 粗糙度 1.0 (完全粗糙) → Mip 6 (最模糊)
-4. 完整的反射探针采样流程
-hlsl
+```
 
+### 4. 完整的反射探针采样流程
+
+```hlsl
 // 在 UnityGlobalIllumination.cginc 中
 
 inline half3 UnityGI_IndirectSpecular(
@@ -1773,10 +1812,11 @@ else  // 不需要混合
 {
     half3 finalReflection = SampleProbe0();
 }
-七、完整使用示例
-1. 在Standard Shader中
-hlsl
+## 七、完整使用示例
 
+### 1. 在Standard Shader中
+
+```hlsl
 half4 fragForwardBase(VertexOutputForwardBase i) : SV_Target
 {
     // ========================================
@@ -1813,9 +1853,9 @@ half4 fragForwardBase(VertexOutputForwardBase i) : SV_Target
     
     return OutputForward(c, s.alpha);
 }
-2. 自定义Shader使用反射探针
-hlsl
+### 2. 自定义Shader使用反射探针
 
+```hlsl
 Shader "Custom/ReflectionProbeExample"
 {
     Properties
@@ -1913,9 +1953,9 @@ Shader "Custom/ReflectionProbeExample"
         }
     }
 }
-3. 通过脚本控制反射探针
-csharp
+### 3. 通过脚本控制反射探针
 
+```csharp
 using UnityEngine;
 
 public class ReflectionProbeController : MonoBehaviour
@@ -1978,33 +2018,36 @@ public class ReflectionProbeController : MonoBehaviour
         return Input.GetKeyDown(KeyCode.R);
     }
 }
-八、性能考虑
-1. Cubemap分辨率对比
-apache
+## 八、性能考虑
 
-分辨率    内存占用(RGBA16F)    适用场景
-64×64     96 KB              远景，不重要的反射
-128×128   384 KB             一般场景
-256×256   1.5 MB             重要的反射表面
-512×512   6 MB               高质量，镜子
-1024×1024 24 MB              极高质量，展示用
-2. 实时探针性能
+### 1. Cubemap分辨率对比
+
+| 分辨率 | 内存占用(RGBA16F) | 适用场景 |
+|--------|-------------------|----------|
+| 64×64 | 96 KB | 远景，不重要的反射 |
+| 128×128 | 384 KB | 一般场景 |
+| 256×256 | 1.5 MB | 重要的反射表面 |
+| 512×512 | 6 MB | 高质量，镜子 |
+| 1024×1024 | 24 MB | 极高质量，展示用 |
+
+### 2. 实时探针性能
 
 单个实时探针每次更新 = 6次场景渲染（每个面1次）
 
-假设：
+**假设：**
 - 场景复杂度：1000 draw calls
 - 更新一个实时探针：6000 draw calls
 - 每帧更新3个探针：18000 draw calls
 
-优化策略：
-├─ 降低分辨率（256 → 128）
-├─ 减少更新频率（每帧 → 每秒）
-├─ 使用简化的场景几何体渲染
-└─ 限制实时探针数量
-3. 优化建议
-csharp
+**优化策略：**
+- 降低分辨率（256 → 128）
+- 减少更新频率（每帧 → 每秒）
+- 使用简化的场景几何体渲染
+- 限制实时探针数量
 
+### 3. 优化建议
+
+```csharp
 // 使用Culling Mask只渲染重要物体
 probe.cullingMask = LayerMask.GetMask("Environment", "ImportantObjects");
 
@@ -2020,6 +2063,7 @@ void UpdateProbe()
 // 使用Time Slicing（时间切片）
 probe.timeSlicingMode = UnityEngine.Rendering.ReflectionProbeTimeSlicingMode.AllFacesAtOnce;
 // 或 IndividualFaces（分多帧渲染，更平滑）
+```
 九、技术总结
 Reflection Probe完整技术栈
 
@@ -2081,31 +2125,30 @@ PBR（Physically Based Rendering）的完整定义
 
 PBR 是一套渲染方法论，包含：
 
-1. 材质模型
-   ├─ 能量守恒（Energy Conservation）
-   ├─ 基于物理的BRDF（如Cook-Torrance）
-   └─ 金属/非金属工作流
+### 1. 材质模型
+- 能量守恒（Energy Conservation）
+- 基于物理的BRDF（如Cook-Torrance）
+- 金属/非金属工作流
 
-2. 光照模型
-   ├─ 直接光照（Direct Lighting）
-   │   └─ 点光源、方向光、聚光灯
-   │
-   └─ 间接光照（Indirect Lighting / GI）
-       ├─ 漫反射间接光
-       │   ├─ Light Probes（动态物体）
-       │   └─ Lightmaps（静态物体）
-       │
-       └─ 镜面反射间接光
-           ├─ Reflection Probes（预烘焙）
-           ├─ SSR（屏幕空间反射）
+### 2. 光照模型
+- **直接光照（Direct Lighting）**
+  - 点光源、方向光、聚光灯
+- **间接光照（Indirect Lighting / GI）**
+  - **漫反射间接光**
+    - Light Probes（动态物体）
+    - Lightmaps（静态物体）
+  - **镜面反射间接光**
+    - Reflection Probes（预烘焙）
+    - SSR（屏幕空间反射）
            ├─ Planar Reflections（平面反射）
            └─ Ray Tracing（实时光追）
 
-3. 着色方程
-   └─ 渲染方程的近似求解
-Unity Standard Shader的PBR实现
-hlsl
+### 3. 着色方程
+- 渲染方程的近似求解
 
+## Unity Standard Shader的PBR实现
+
+```hlsl
 // Unity的PBR核心函数
 half4 UNITY_BRDF_PBS(
     half3 diffColor,          // 漫反射颜色
@@ -2137,23 +2180,20 @@ Reflection Probes 只是 PBR 中间接镜面反射光照的一种数据来源！
 
 PBR 间接镜面反射的实现方式：
 
-1. 预计算方法（离线）
-   ├─ Reflection Probes ← Unity主要使用
-   │   ├─ 优点：质量好，性能高
-   │   └─ 缺点：不能反射动态物体
-   │
-   └─ Lightmap中的镜面反射
-       └─ 只适用于静态物体
+### 1. 预计算方法（离线）
+- **Reflection Probes** ← Unity主要使用
+  - 优点：质量好，性能高
+  - 缺点：不能反射动态物体
+- **Lightmap中的镜面反射**
+  - 只适用于静态物体
 
-2. 实时方法
-   ├─ Screen Space Reflections (SSR)
-   │   ├─ 优点：能反射屏幕内容
-   │   └─ 缺点：屏幕外无反射
-   │
-   ├─ Planar Reflections
-   │   ├─ 优点：完美的平面反射
-   │   └─ 缺点：只适用于平面
-   │
+### 2. 实时方法
+- **Screen Space Reflections (SSR)**
+  - 优点：能反射屏幕内容
+  - 缺点：屏幕外无反射
+- **Planar Reflections**
+  - 优点：完美的平面反射
+  - 缺点：只适用于平面
    └─ Ray Tracing (DXR)
        ├─ 优点：完全准确
        └─ 缺点：性能开销大
@@ -2396,38 +2436,40 @@ Unity HDRP/URP的混合方案
 
 PBR间接镜面反射的层次：
 
-1. Base Layer（基础层）
-   └─ Reflection Probes
-      └─ 提供粗糙的环境反射
+### 1. Base Layer（基础层）
+- **Reflection Probes**
+  - 提供粗糙的环境反射
 
-2. Enhancement Layer（增强层）
-   └─ Screen Space Reflections (SSR)
-      └─ 提供精确的屏幕内反射
+### 2. Enhancement Layer（增强层）
+- **Screen Space Reflections (SSR)**
+  - 提供精确的屏幕内反射
 
-3. Fallback（后备）
-   └─ Sky Reflection
-      └─ 当没有探针时使用天空盒
+### 3. Fallback（后备）
+- **Sky Reflection**
+  - 当没有探针时使用天空盒
 
-混合公式：
+**混合公式：**
+```hlsl
 finalReflection = lerp(
     ReflectionProbe,
     SSR,
     ssrWeight
 ) * fresnel;
-Unreal Engine的做法
+## Unreal Engine的做法
 
 虚幻引擎也是类似的：
 
-1. Reflection Captures（类似Unity的Reflection Probes）
-2. Screen Space Reflections
-3. Ray Traced Reflections（光追）
-4. Planar Reflections
+1. **Reflection Captures**（类似Unity的Reflection Probes）
+2. **Screen Space Reflections**
+3. **Ray Traced Reflections**（光追）
+4. **Planar Reflections**
 
-PBR材质模型：
+**PBR材质模型：**
 - BaseColor
 - Metallic
 - Roughness
 - Specular（F0）
+
 所有引擎都是：PBR作为核心，使用多种数据源（包括Reflection Probes）
 
 九、总结
@@ -2491,24 +2533,27 @@ Unity中的Reflection Probes详解
 
 但Unity在此基础上增加了很多实用功能。让我详细解释一下。
 
-一、Reflection Probes的本质
-1. 核心概念
+## 一、Reflection Probes的本质
 
-Reflection Probes = 预过滤的环境立方体贴图（Pre-filtered Environment Cubemap）
+### 1. 核心概念
 
-PBR IBL 理论：
-├─ 漫反射部分 → Irradiance Map（辐照度图）
-└─ 镜面反射部分 → Pre-filtered Environment Map（预过滤环境图）
-                  ↑
-                  这就是 Reflection Probes！
-2. 数学基础
+**Reflection Probes = 预过滤的环境立方体贴图（Pre-filtered Environment Cubemap）**
+
+**PBR IBL 理论：**
+- 漫反射部分 → Irradiance Map（辐照度图）
+- 镜面反射部分 → Pre-filtered Environment Map（预过滤环境图）
+  - ↑
+  - 这就是 Reflection Probes！
+
+### 2. 数学基础
+
 在PBR中，镜面反射的IBL积分是：
 
-reasonml
-
+```
 L_specular = ∫_Ω L_i(l) * f_r(l, v, n) * (n·l) dl
+```
 
-其中：
+**其中：**
 - L_i(l)：入射光照（环境贴图）
 - f_r：BRDF（镜面反射部分）
 - Ω：半球
@@ -2520,11 +2565,11 @@ L_specular ≈ ∫_Ω L_i(l) * (n·l) dl  ×  ∫_Ω f_r(l,v,n) * (n·l) dl
              ↑                          ↑
              预过滤环境贴图              BRDF LUT
              (Reflection Probes)        (预计算查找表)
-3. Unity的实现
+### 3. Unity的实现
+
 Unity的Reflection Probes就是这个预过滤环境贴图，它在不同Mipmap级别存储了不同粗糙度的环境反射：
 
-apache
-
+```
 Reflection Probe Cubemap 结构：
 
 Mip 0: ████████  ← Roughness = 0.0 (完全光滑，清晰反射)
@@ -2533,30 +2578,34 @@ Mip 2: ████      ← Roughness ≈ 0.4
 Mip 3: ██        ← Roughness ≈ 0.6
 Mip 4: █         ← Roughness ≈ 0.8
 Mip 5: ▓         ← Roughness = 1.0 (完全粗糙，模糊反射)
-二、Reflection Probes的生成过程
-1. 烘焙/实时捕获流程
+```
 
-1. 捕获阶段（Capture）
+## 二、Reflection Probes的生成过程
+
+### 1. 烘焙/实时捕获流程
+
+#### 1. 捕获阶段（Capture）
    ├─> 在探针位置放置虚拟相机
    ├─> 渲染6个面（+X, -X, +Y, -Y, +Z, -Z）
    ├─> 生成原始Cubemap（HDR格式）
    └─> 分辨率：32, 64, 128, 256, 512, 1024, 2048
 
-2. 卷积/预过滤阶段（Convolution）
-   ├─> 对每个Mip级别进行卷积
-   │   ├─> Mip 0: 卷积核很小（sharp）
-   │   ├─> Mip 1: 卷积核稍大
-   │   ├─> ...
-   │   └─> Mip N: 卷积核很大（blur）
-   │
-   └─> 实现算法：
-       ├─ 重要性采样（Importance Sampling）
-       ├─ GGX分布
-       └─ 每个像素采样数百个方向
+#### 2. 卷积/预过滤阶段（Convolution）
+- 对每个Mip级别进行卷积
+  - Mip 0: 卷积核很小（sharp）
+  - Mip 1: 卷积核稍大
+  - ...
+  - Mip N: 卷积核很大（blur）
+- 实现算法：
+  - 重要性采样（Importance Sampling）
+  - GGX分布
+  - 每个像素采样数百个方向
 
-3. 编码阶段（Encoding）
-   └─> 编码为RGBM或HDR格式
-2. 预过滤的实际代码（概念）
+#### 3. 编码阶段（Encoding）
+- 编码为RGBM或HDR格式
+
+### 2. 预过滤的实际代码（概念）
+
 这是Unity内部使用的算法（简化版）：
 
 hlsl
@@ -2591,12 +2640,13 @@ float3 PrefilterEnvMap(float roughness, float3 R, TextureCube envMap)
     
     return prefilteredColor / totalWeight;
 }
-三、在Shader中的使用
-1. Unity_GlossyEnvironment函数
+## 三、在Shader中的使用
+
+### 1. Unity_GlossyEnvironment函数
+
 在UnityImageBasedLighting.cginc中：
 
-hlsl
-
+```hlsl
 // 这就是PBR IBL的镜面反射部分！
 half3 Unity_GlossyEnvironment(
     UNITY_ARGS_TEXCUBE(tex),     // Reflection Probe Cubemap
@@ -2621,9 +2671,9 @@ half3 Unity_GlossyEnvironment(
     // 3. 解码HDR
     return DecodeHDR(rgbm, hdr);
 }
-2. 粗糙度到Mip级别的映射
-hlsl
+### 2. 粗糙度到Mip级别的映射
 
+```hlsl
 // 在UnityStandardConfig.cginc中
 #define UNITY_SPECCUBE_LOD_STEPS 6  // 通常是6个Mip级别
 
@@ -2636,7 +2686,9 @@ half perceptualRoughnessToMipmapLevel(half perceptualRoughness)
 // roughness = 0.0 → mip = 0 (最清晰)
 // roughness = 0.5 → mip = 3 (中等模糊)
 // roughness = 1.0 → mip = 6 (最模糊)
-3. 完整的PBR IBL实现
+```
+
+### 3. 完整的PBR IBL实现
 在Standard Shader中：
 
 hlsl
@@ -2687,9 +2739,9 @@ BRDF积分	运行时计算或查表	简化为查表
 Unity增强功能
 Unity在标准PBR IBL基础上添加了：
 
-1. 多探针混合
-hlsl
+### 1. 多探针混合
 
+```hlsl
 #ifdef UNITY_SPECCUBE_BLENDING
     // 混合两个Reflection Probes
     half3 env0 = Unity_GlossyEnvironment(
@@ -2707,9 +2759,9 @@ hlsl
     // 根据权重混合
     specular = lerp(env1, env0, blendWeight);
 #endif
-2. 盒投影（Box Projection）
-hlsl
+### 2. 盒投影（Box Projection）
 
+```hlsl
 #ifdef UNITY_SPECCUBE_BOX_PROJECTION
     // 修正反射方向，模拟盒子形状的房间
     half3 BoxProjectedCubemapDirection(
@@ -2735,9 +2787,9 @@ hlsl
 #endif
 这使得室内反射更真实！
 
-3. 动态更新模式
-csharp
+### 3. 动态更新模式
 
+```csharp
 // C# 代码
 ReflectionProbe probe = GetComponent<ReflectionProbe>();
 
@@ -2749,10 +2801,12 @@ probe.mode = ReflectionProbeMode.Realtime;     // 实时，最慢
 // 实时更新频率
 probe.refreshMode = ReflectionProbeRefreshMode.EveryFrame;    // 每帧
 probe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;  // 脚本控制
-五、实际数据结构
-1. Reflection Probe资源格式
-apache
+```
+## 五、实际数据结构
 
+### 1. Reflection Probe资源格式
+
+```
 ReflectionProbe.exr（烘焙结果）
 ├─ Format: Cubemap
 ├─ Resolution: 128x128（或更高）
@@ -2767,8 +2821,11 @@ ReflectionProbe.exr（烘焙结果）
 │   └─ Mip 6: 2x2     (roughness ≈ 1.0)
 │
 └─ Encoding: RGBM或HDR16
-2. Shader变量
-hlsl
+```
+
+### 2. Shader变量
+
+```hlsl
 
 // Reflection Probe 0（主探针）
 UNITY_DECLARE_TEXCUBE(unity_SpecCube0);
@@ -2783,12 +2840,13 @@ uniform half4 unity_SpecCube1_HDR;
 uniform float4 unity_SpecCube1_BoxMin;
 uniform float4 unity_SpecCube1_BoxMax;
 uniform float4 unity_SpecCube1_ProbePosition;
-六、与标准PBR IBL工作流的兼容性
-1. 导入外部HDR环境图
+## 六、与标准PBR IBL工作流的兼容性
+
+### 1. 导入外部HDR环境图
+
 Unity支持导入标准的HDR环境贴图：
 
-csharp
-
+```csharp
 // 1. 导入HDR全景图（Equirectangular）
 // 2. 设置Texture Type为 "Default"
 // 3. 勾选 "Generate Cubemap"
@@ -2798,8 +2856,11 @@ csharp
 ReflectionProbe probe = GetComponent<ReflectionProbe>();
 probe.mode = ReflectionProbeMode.Custom;
 probe.customBakedTexture = myHDRCubemap;
-2. Skybox作为全局Reflection Probe
-hlsl
+```
+
+### 2. Skybox作为全局Reflection Probe
+
+```hlsl
 
 // Unity自动从Skybox生成全局Reflection Probe
 // 在 Lighting > Environment > Reflection Source
@@ -2961,20 +3022,21 @@ public enum ReflectionProbeMode
     Custom,     // 自定义模式
     Realtime    // 实时模式
 }
-1. Baked（烘焙模式）
+### 1. Baked（烘焙模式）
 
-特点：
-├─ 在编辑器中预计算，保存为资源文件
-├─ 运行时不更新
-├─ 性能开销：0（运行时）
-└─ 适用场景：静态环境
+**特点：**
+- 在编辑器中预计算，保存为资源文件
+- 运行时不更新
+- 性能开销：0（运行时）
+- 适用场景：静态环境
 
-工作流程：
+**工作流程：**
 1. Editor中点击"Bake"
 2. Unity渲染6个面 → 卷积 → 生成Mipmap
 3. 保存为 .exr 文件
 4. 运行时直接加载使用
-示例：
+
+**示例：**
 
 csharp
 
