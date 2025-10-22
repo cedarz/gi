@@ -3171,4 +3171,1220 @@ int main() {
     for (auto n : data) {
         std::cout << n << " ";
     }
-    std::cout << std::endl
+    std::cout << std::endl;
+    
+    return 0;
+}
+
+/*
+范围适配器、CPO、Niebloid 总结：
+
+1. 范围适配器 (Range Adaptors)：
+   - 可组合的范围转换器
+   - 支持管道操作符 |
+   - 返回轻量级视图
+   - 支持惰性求值
+
+2. 定制点对象 (CPO)：
+   - 支持 ADL (Argument-Dependent Lookup)
+   - 允许用户为自定义类型定制行为
+   - 优先级：成员函数 > ADL > 内建支持
+   - 确保一致的接口
+
+3. Niebloid：
+   - 阻止 ADL 的 CPO
+   - 确保调用的是指定命名空间的版本
+   - 避免意外的用户定制干扰
+   - 提高代码可预测性
+
+4. 设计优势：
+   - 更好的可组合性
+   - 类型安全
+   - 性能优化（惰性求值）
+   - 统一的接口设计
+*/
+
+## 32. ADL (实参依赖查找)
+
+**标准版本**: C++98/03 引入，C++11/14/17/20 增强
+
+**详细讲解**:
+ADL (Argument-Dependent Lookup) 是C++的重要查找机制，当调用函数时，编译器会在实参类型的命名空间中查找函数。这使得运算符重载和定制点对象能够正确工作。ADL也被称为Koenig查找。
+
+**演示代码**:
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+#include <algorithm>
+
+// 1. 基本ADL示例
+namespace MyNamespace {
+    struct Point {
+        int x, y;
+        Point(int x, int y) : x(x), y(y) {}
+    };
+    
+    // 在Point的命名空间中定义运算符
+    Point operator+(const Point& a, const Point& b) {
+        return Point(a.x + b.x, a.y + b.y);
+    }
+    
+    void print(const Point& p) {
+        std::cout << "Point(" << p.x << ", " << p.y << ")" << std::endl;
+    }
+}
+
+// 2. ADL与模板
+namespace TemplateExample {
+    template<typename T>
+    void swap(T& a, T& b) {
+        std::cout << "Template swap called" << std::endl;
+        T temp = a;
+        a = b;
+        b = temp;
+    }
+    
+    struct MyType {
+        int value;
+        MyType(int v) : value(v) {}
+    };
+    
+    // 为MyType特化swap
+    void swap(MyType& a, MyType& b) {
+        std::cout << "ADL swap for MyType called" << std::endl;
+        int temp = a.value;
+        a.value = b.value;
+        b.value = temp;
+    }
+}
+
+// 3. ADL与标准库
+namespace ADLWithSTL {
+    struct MyString {
+        std::string data;
+        MyString(const char* s) : data(s) {}
+        
+        // 提供begin/end以支持范围for
+        auto begin() { return data.begin(); }
+        auto end() { return data.end(); }
+        auto begin() const { return data.begin(); }
+        auto end() const { return data.end(); }
+    };
+    
+    // 通过ADL定制std::swap
+    void swap(MyString& a, MyString& b) {
+        std::cout << "Custom swap for MyString" << std::endl;
+        a.data.swap(b.data);
+    }
+}
+
+// 4. ADL陷阱和解决方案
+namespace ADLTrap {
+    struct A {};
+    struct B {};
+    
+    void func(A) { std::cout << "func(A)" << std::endl; }
+    void func(B) { std::cout << "func(B)" << std::endl; }
+    
+    namespace Inner {
+        struct C {};
+        void func(C) { std::cout << "func(C) in Inner" << std::endl; }
+    }
+    
+    // 隐藏友元函数（Hidden Friend）
+    struct HiddenFriend {
+        int value;
+        HiddenFriend(int v) : value(v) {}
+        
+        // 友元函数，只能通过ADL找到
+        friend bool operator==(const HiddenFriend& a, const HiddenFriend& b) {
+            return a.value == b.value;
+        }
+        
+        friend std::ostream& operator<<(std::ostream& os, const HiddenFriend& hf) {
+            return os << "HiddenFriend(" << hf.value << ")";
+        }
+    };
+}
+
+// 5. ADL与概念（C++20）
+namespace ADLConcepts {
+    template<typename T>
+    concept Printable = requires(T t) {
+        std::cout << t;  // 需要ADL找到operator<<
+    };
+    
+    struct PrintableType {
+        int value;
+        PrintableType(int v) : value(v) {}
+    };
+    
+    // 通过ADL提供operator<<
+    std::ostream& operator<<(std::ostream& os, const PrintableType& pt) {
+        return os << "PrintableType(" << pt.value << ")";
+    }
+}
+
+int main() {
+    std::cout << "=== ADL Basic Example ===" << std::endl;
+    
+    // ADL自动找到MyNamespace中的operator+
+    MyNamespace::Point p1(1, 2);
+    MyNamespace::Point p2(3, 4);
+    auto p3 = p1 + p2;  // ADL找到MyNamespace::operator+
+    MyNamespace::print(p3);  // ADL找到MyNamespace::print
+    
+    std::cout << "\n=== ADL with Templates ===" << std::endl;
+    
+    TemplateExample::MyType a(10), b(20);
+    std::cout << "Before swap: a=" << a.value << ", b=" << b.value << std::endl;
+    
+    // 使用std::swap会通过ADL找到特化版本
+    using std::swap;
+    swap(a, b);  // 调用ADL找到的swap
+    
+    std::cout << "After swap: a=" << a.value << ", b=" << b.value << std::endl;
+    
+    std::cout << "\n=== ADL with STL ===" << std::endl;
+    
+    ADLWithSTL::MyString s1("Hello"), s2("World");
+    std::cout << "Before swap: s1=" << s1.data << ", s2=" << s2.data << std::endl;
+    
+    using std::swap;
+    swap(s1, s2);  // ADL找到自定义swap
+    
+    std::cout << "After swap: s1=" << s1.data << ", s2=" << s2.data << std::endl;
+    
+    std::cout << "\n=== ADL Function Resolution ===" << std::endl;
+    
+    ADLTrap::A a_obj;
+    ADLTrap::B b_obj;
+    ADLTrap::Inner::C c_obj;
+    
+    func(a_obj);  // 调用ADLTrap::func(A)
+    func(b_obj);  // 调用ADLTrap::func(B)
+    func(c_obj);  // ADL找到Inner::func(C)
+    
+    std::cout << "\n=== Hidden Friend Functions ===" << std::endl;
+    
+    ADLTrap::HiddenFriend hf1(42), hf2(42), hf3(100);
+    
+    // 只能通过ADL找到友元函数
+    std::cout << "hf1 == hf2: " << (hf1 == hf2) << std::endl;  // true
+    std::cout << "hf1 == hf3: " << (hf1 == hf3) << std::endl;  // false
+    
+    std::cout << "hf1: " << hf1 << std::endl;  // ADL找到operator<<
+    
+    std::cout << "\n=== ADL with Concepts ===" << std::endl;
+    
+    ADLConcepts::PrintableType pt(123);
+    std::cout << "PrintableType: " << pt << std::endl;
+    
+    // 验证概念
+    static_assert(ADLConcepts::Printable<ADLConcepts::PrintableType>);
+    
+    return 0;
+}
+
+/*
+ADL 要点总结：
+
+1. 查找顺序：
+   - 当前作用域
+   - 实参类型的命名空间
+   - 实参类型基类的命名空间
+   - 全局命名空间
+
+2. ADL的优势：
+   - 支持运算符重载
+   - 实现定制点对象
+   - 隐藏友元函数
+   - 模板特化
+
+3. ADL的陷阱：
+   - 意外的函数调用
+   - 命名空间污染
+   - 查找顺序复杂
+
+4. 最佳实践：
+   - 使用using声明控制ADL
+   - 合理使用友元函数
+   - 避免在全局命名空间定义过多函数
+   - 理解查找顺序避免歧义
+*/
+
+## 33. CRTP (奇特重现模板模式)
+
+**标准版本**: C++98/03 引入，C++11/14/17/20 增强
+
+**详细讲解**:
+CRTP (Curiously Recurring Template Pattern) 是一种模板元编程技术，通过让派生类继承以自身为模板参数的基类，实现静态多态和编译期多态。CRTP在C++20范围适配器中有重要应用。
+
+**演示代码**:
+```cpp
+#include <iostream>
+#include <vector>
+#include <memory>
+#include <concepts>
+
+// 1. 基本CRTP示例
+template<typename Derived>
+class Base {
+public:
+    void interface() {
+        static_cast<Derived*>(this)->implementation();
+    }
+    
+    void common_operation() {
+        std::cout << "Common operation in Base" << std::endl;
+        static_cast<Derived*>(this)->specific_operation();
+    }
+};
+
+class Derived1 : public Base<Derived1> {
+public:
+    void implementation() {
+        std::cout << "Derived1 implementation" << std::endl;
+    }
+    
+    void specific_operation() {
+        std::cout << "Derived1 specific operation" << std::endl;
+    }
+};
+
+class Derived2 : public Base<Derived2> {
+public:
+    void implementation() {
+        std::cout << "Derived2 implementation" << std::endl;
+    }
+    
+    void specific_operation() {
+        std::cout << "Derived2 specific operation" << std::endl;
+    }
+};
+
+// 2. CRTP计数器模式
+template<typename T>
+class Counter {
+private:
+    static inline int count = 0;
+public:
+    Counter() { ++count; }
+    Counter(const Counter&) { ++count; }
+    Counter(Counter&&) { ++count; }
+    ~Counter() { --count; }
+    
+    static int get_count() { return count; }
+};
+
+class MyClass : public Counter<MyClass> {
+    int value;
+public:
+    MyClass(int v) : value(v) {}
+    int get_value() const { return value; }
+};
+
+// 3. CRTP克隆模式
+template<typename Derived>
+class Cloneable {
+public:
+    std::unique_ptr<Derived> clone() const {
+        return std::make_unique<Derived>(static_cast<const Derived&>(*this));
+    }
+    
+    virtual ~Cloneable() = default;
+};
+
+class Shape : public Cloneable<Shape> {
+public:
+    virtual void draw() = 0;
+    virtual ~Shape() = default;
+};
+
+class Circle : public Shape, public Cloneable<Circle> {
+    double radius;
+public:
+    Circle(double r) : radius(r) {}
+    
+    void draw() override {
+        std::cout << "Drawing circle with radius " << radius << std::endl;
+    }
+    
+    // 重新定义clone以返回正确类型
+    std::unique_ptr<Circle> clone() const override {
+        return std::make_unique<Circle>(*this);
+    }
+};
+
+// 4. CRTP比较操作符
+template<typename Derived>
+class Comparable {
+public:
+    friend bool operator==(const Derived& lhs, const Derived& rhs) {
+        return lhs.equals(rhs);
+    }
+    
+    friend bool operator!=(const Derived& lhs, const Derived& rhs) {
+        return !(lhs == rhs);
+    }
+};
+
+class Point : public Comparable<Point> {
+    int x, y;
+public:
+    Point(int x, int y) : x(x), y(y) {}
+    
+    bool equals(const Point& other) const {
+        return x == other.x && y == other.y;
+    }
+    
+    friend std::ostream& operator<<(std::ostream& os, const Point& p) {
+        return os << "Point(" << p.x << ", " << p.y << ")";
+    }
+};
+
+// 5. CRTP在范围适配器中的应用（C++20风格）
+template<typename Derived>
+class RangeAdaptor {
+public:
+    template<std::ranges::viewable_range R>
+    auto operator()(R&& r) const {
+        return static_cast<const Derived&>(*this).adapt(std::forward<R>(r));
+    }
+    
+    template<std::ranges::viewable_range R>
+    friend auto operator|(R&& r, const RangeAdaptor& adaptor) {
+        return adaptor(std::forward<R>(r));
+    }
+};
+
+class SquareAdaptor : public RangeAdaptor<SquareAdaptor> {
+public:
+    template<std::ranges::viewable_range R>
+    auto adapt(R&& r) const {
+        return std::views::transform(std::forward<R>(r), [](auto x) { return x * x; });
+    }
+};
+
+// 6. CRTP单例模式
+template<typename Derived>
+class Singleton {
+protected:
+    Singleton() = default;
+    Singleton(const Singleton&) = delete;
+    Singleton& operator=(const Singleton&) = delete;
+    
+public:
+    static Derived& instance() {
+        static Derived instance;
+        return instance;
+    }
+};
+
+class Logger : public Singleton<Logger> {
+    friend class Singleton<Logger>;
+    
+    Logger() = default;
+    
+public:
+    void log(const std::string& message) {
+        std::cout << "Log: " << message << std::endl;
+    }
+};
+
+// 7. CRTP与概念（C++20）
+template<typename T>
+concept CRTPBase = requires(T t) {
+    typename T::base_type;
+    static_cast<typename T::base_type*>(&t);
+};
+
+template<typename Derived>
+class ConceptBase {
+public:
+    using base_type = ConceptBase;
+    
+    void concept_interface() {
+        static_cast<Derived*>(this)->concept_implementation();
+    }
+};
+
+class ConceptDerived : public ConceptBase<ConceptDerived> {
+public:
+    void concept_implementation() {
+        std::cout << "Concept-based CRTP implementation" << std::endl;
+    }
+};
+
+int main() {
+    std::cout << "=== Basic CRTP ===" << std::endl;
+    
+    Derived1 d1;
+    Derived2 d2;
+    
+    d1.interface();  // 调用Derived1::implementation
+    d2.interface();  // 调用Derived2::implementation
+    
+    d1.common_operation();
+    d2.common_operation();
+    
+    std::cout << "\n=== CRTP Counter Pattern ===" << std::endl;
+    
+    std::cout << "Initial count: " << MyClass::get_count() << std::endl;
+    
+    {
+        MyClass obj1(10);
+        MyClass obj2(20);
+        std::cout << "Count with 2 objects: " << MyClass::get_count() << std::endl;
+        
+        MyClass obj3 = obj1;  // 拷贝构造
+        std::cout << "Count after copy: " << MyClass::get_count() << std::endl;
+    }
+    
+    std::cout << "Count after scope: " << MyClass::get_count() << std::endl;
+    
+    std::cout << "\n=== CRTP Clone Pattern ===" << std::endl;
+    
+    auto circle = std::make_unique<Circle>(5.0);
+    circle->draw();
+    
+    auto cloned_circle = circle->clone();
+    cloned_circle->draw();
+    
+    std::cout << "\n=== CRTP Comparison ===" << std::endl;
+    
+    Point p1(1, 2);
+    Point p2(1, 2);
+    Point p3(3, 4);
+    
+    std::cout << "p1: " << p1 << std::endl;
+    std::cout << "p2: " << p2 << std::endl;
+    std::cout << "p3: " << p3 << std::endl;
+    
+    std::cout << "p1 == p2: " << (p1 == p2) << std::endl;  // true
+    std::cout << "p1 == p3: " << (p1 == p3) << std::endl;  // false
+    
+    std::cout << "\n=== CRTP Range Adaptor ===" << std::endl;
+    
+    std::vector<int> numbers = {1, 2, 3, 4, 5};
+    SquareAdaptor square;
+    
+    auto squared = numbers | square;
+    for (auto n : squared) {
+        std::cout << n << " ";  // 1 4 9 16 25
+    }
+    std::cout << std::endl;
+    
+    std::cout << "\n=== CRTP Singleton ===" << std::endl;
+    
+    Logger::instance().log("Hello from singleton logger");
+    Logger::instance().log("Another log message");
+    
+    std::cout << "\n=== CRTP with Concepts ===" << std::endl;
+    
+    static_assert(CRTPBase<ConceptDerived>);
+    ConceptDerived cd;
+    cd.concept_interface();
+    
+    return 0;
+}
+
+/*
+CRTP 要点总结：
+
+1. 核心思想：
+   - 派生类继承以自身为模板参数的基类
+   - 基类通过static_cast访问派生类
+   - 实现编译期多态
+
+2. 主要应用：
+   - 静态多态
+   - 代码复用
+   - 编译期优化
+   - 类型安全的克隆
+   - 操作符重载
+
+3. 优势：
+   - 零运行时开销
+   - 类型安全
+   - 编译期检查
+   - 更好的性能
+
+4. 注意事项：
+   - 需要正确使用static_cast
+   - 避免循环依赖
+   - 理解模板实例化时机
+   - 注意虚函数的使用
+
+5. 现代应用：
+   - C++20范围适配器
+   - 概念约束
+   - 编译期计算
+   - 类型擦除
+*/
+
+## 34. Concepts (概念)
+
+**标准版本**: C++20
+
+**详细讲解**:
+Concepts是C++20引入的重要特性，用于约束模板参数和函数参数。概念提供了一种声明式的方式来描述类型必须满足的要求，替代了传统的SFINAE技术，使代码更清晰、错误信息更友好。
+
+**演示代码**:
+```cpp
+#include <iostream>
+#include <vector>
+#include <string>
+#include <concepts>
+#include <ranges>
+#include <type_traits>
+
+// 1. 基本概念定义
+template<typename T>
+concept Addable = requires(T a, T b) {
+    a + b;  // 必须支持加法
+};
+
+template<typename T>
+concept Printable = requires(T t) {
+    std::cout << t;  // 必须能输出到cout
+};
+
+template<typename T>
+concept Container = requires(T t) {
+    t.begin();
+    t.end();
+    typename T::value_type;
+    typename T::size_type;
+};
+
+// 2. 复合概念
+template<typename T>
+concept Numeric = std::integral<T> || std::floating_point<T>;
+
+template<typename T>
+concept Sortable = requires(T t) {
+    t < t;  // 必须支持小于比较
+    t == t; // 必须支持相等比较
+};
+
+// 3. 概念约束函数
+template<Addable T>
+T add(T a, T b) {
+    return a + b;
+}
+
+template<Printable T>
+void print_value(T value) {
+    std::cout << "Value: " << value << std::endl;
+}
+
+template<Container C>
+void print_container(const C& container) {
+    std::cout << "Container with " << container.size() << " elements:" << std::endl;
+    for (const auto& item : container) {
+        std::cout << "  " << item << std::endl;
+    }
+}
+
+// 4. requires子句
+template<typename T>
+requires Numeric<T> && Sortable<T>
+T find_max(T a, T b) {
+    return (a > b) ? a : b;
+}
+
+// 5. 概念与模板特化
+template<typename T>
+concept Pointer = std::is_pointer_v<T>;
+
+template<typename T>
+concept SmartPointer = requires(T t) {
+    t.get();
+    t.operator*();
+    t.operator->();
+};
+
+template<Pointer T>
+void process_pointer(T ptr) {
+    std::cout << "Processing raw pointer" << std::endl;
+}
+
+template<SmartPointer T>
+void process_pointer(T ptr) {
+    std::cout << "Processing smart pointer" << std::endl;
+}
+
+// 6. 概念与范围
+template<typename R>
+concept Range = requires(R r) {
+    std::ranges::begin(r);
+    std::ranges::end(r);
+};
+
+template<Range R>
+void process_range(R&& range) {
+    std::cout << "Processing range" << std::endl;
+    for (const auto& item : range) {
+        std::cout << "  " << item << std::endl;
+    }
+}
+
+// 7. 自定义类型满足概念
+class MyNumber {
+    int value;
+public:
+    MyNumber(int v) : value(v) {}
+    
+    MyNumber operator+(const MyNumber& other) const {
+        return MyNumber(value + other.value);
+    }
+    
+    friend std::ostream& operator<<(std::ostream& os, const MyNumber& n) {
+        return os << "MyNumber(" << n.value << ")";
+    }
+    
+    bool operator<(const MyNumber& other) const {
+        return value < other.value;
+    }
+    
+    bool operator==(const MyNumber& other) const {
+        return value == other.value;
+    }
+};
+
+// 8. 概念约束类模板
+template<typename T>
+concept Drawable = requires(T t) {
+    t.draw();
+};
+
+template<Drawable T>
+class Canvas {
+    std::vector<T> objects;
+public:
+    void add_object(T obj) {
+        objects.push_back(obj);
+    }
+    
+    void draw_all() {
+        for (auto& obj : objects) {
+            obj.draw();
+        }
+    }
+};
+
+class Circle {
+    double radius;
+public:
+    Circle(double r) : radius(r) {}
+    
+    void draw() {
+        std::cout << "Drawing circle with radius " << radius << std::endl;
+    }
+};
+
+class Rectangle {
+    double width, height;
+public:
+    Rectangle(double w, double h) : width(w), height(h) {}
+    
+    void draw() {
+        std::cout << "Drawing rectangle " << width << "x" << height << std::endl;
+    }
+};
+
+// 9. 概念与auto
+template<typename T>
+concept Callable = requires(T t) {
+    t();
+};
+
+void execute_callable(Callable auto func) {
+    func();
+}
+
+// 10. 概念约束的类成员
+template<typename T>
+class ConceptContainer {
+    std::vector<T> data;
+public:
+    template<Addable U>
+    void add(U item) {
+        data.push_back(item);
+    }
+    
+    template<typename U>
+    requires Printable<U>
+    void print_all() {
+        for (const auto& item : data) {
+            std::cout << item << " ";
+        }
+        std::cout << std::endl;
+    }
+};
+
+int main() {
+    std::cout << "=== Basic Concepts ===" << std::endl;
+    
+    // 测试Addable概念
+    int a = 10, b = 20;
+    std::cout << "add(10, 20) = " << add(a, b) << std::endl;
+    
+    MyNumber n1(5), n2(15);
+    auto n3 = add(n1, n2);
+    print_value(n3);
+    
+    std::cout << "\n=== Container Concepts ===" << std::endl;
+    
+    std::vector<int> vec = {1, 2, 3, 4, 5};
+    print_container(vec);
+    
+    std::vector<std::string> str_vec = {"Hello", "World", "C++20"};
+    print_container(str_vec);
+    
+    std::cout << "\n=== Numeric and Sortable ===" << std::endl;
+    
+    std::cout << "Max of 10 and 20: " << find_max(10, 20) << std::endl;
+    std::cout << "Max of 3.14 and 2.71: " << find_max(3.14, 2.71) << std::endl;
+    
+    MyNumber max_n = find_max(n1, n2);
+    print_value(max_n);
+    
+    std::cout << "\n=== Pointer Concepts ===" << std::endl;
+    
+    int x = 42;
+    int* ptr = &x;
+    std::unique_ptr<int> smart_ptr = std::make_unique<int>(100);
+    
+    process_pointer(ptr);
+    process_pointer(smart_ptr);
+    
+    std::cout << "\n=== Range Concepts ===" << std::endl;
+    
+    std::vector<int> range_vec = {10, 20, 30, 40, 50};
+    process_range(range_vec);
+    
+    // 使用ranges视图
+    auto filtered = range_vec | std::views::filter([](int n) { return n > 25; });
+    process_range(filtered);
+    
+    std::cout << "\n=== Drawable Concepts ===" << std::endl;
+    
+    Canvas<Circle> circle_canvas;
+    circle_canvas.add_object(Circle(5.0));
+    circle_canvas.add_object(Circle(3.0));
+    circle_canvas.draw_all();
+    
+    Canvas<Rectangle> rect_canvas;
+    rect_canvas.add_object(Rectangle(10.0, 5.0));
+    rect_canvas.add_object(Rectangle(3.0, 4.0));
+    rect_canvas.draw_all();
+    
+    std::cout << "\n=== Callable Concepts ===" << std::endl;
+    
+    execute_callable([]() { std::cout << "Lambda called" << std::endl; });
+    
+    auto func = []() { std::cout << "Function object called" << std::endl; };
+    execute_callable(func);
+    
+    std::cout << "\n=== Concept Container ===" << std::endl;
+    
+    ConceptContainer<int> container;
+    container.add(1);
+    container.add(2);
+    container.add(3);
+    container.print_all();
+    
+    return 0;
+}
+
+/*
+Concepts 要点总结：
+
+1. 概念定义语法：
+   - template<typename T> concept Name = ...;
+   - 使用requires表达式定义约束
+
+2. 概念约束方式：
+   - template<Concept T> void func();
+   - template<typename T> requires Concept<T> void func();
+   - void func(Concept auto param);
+
+3. 主要优势：
+   - 更清晰的错误信息
+   - 更好的代码可读性
+   - 编译期检查
+   - 替代SFINAE
+
+4. 常用概念：
+   - std::integral, std::floating_point
+   - std::same_as, std::convertible_to
+   - std::ranges::range
+   - std::copyable, std::movable
+
+5. 最佳实践：
+   - 优先使用标准库概念
+   - 合理组合概念
+   - 避免过度约束
+   - 提供清晰的错误信息
+*/
+
+## 35. 协程 (Coroutines)
+
+**标准版本**: C++20
+
+**详细讲解**:
+协程是C++20引入的异步编程特性，允许函数在执行过程中暂停和恢复。协程通过`co_await`、`co_yield`、`co_return`关键字实现，支持生成器、异步操作、状态机等模式。协程的核心概念包括promise_type、挂起点、等待体等。
+
+**演示代码**:
+```cpp
+#include <iostream>
+#include <coroutine>
+#include <memory>
+#include <vector>
+#include <optional>
+#include <exception>
+
+// 1. 基本协程框架
+template<typename T>
+struct Generator {
+    struct promise_type {
+        T current_value;
+        
+        Generator get_return_object() {
+            return Generator{std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+        
+        std::suspend_always initial_suspend() { return {}; }
+        std::suspend_always final_suspend() noexcept { return {}; }
+        
+        std::suspend_always yield_value(T value) {
+            current_value = value;
+            return {};
+        }
+        
+        void return_void() {}
+        void unhandled_exception() {}
+    };
+    
+    std::coroutine_handle<promise_type> coro;
+    
+    Generator(std::coroutine_handle<promise_type> h) : coro(h) {}
+    ~Generator() { if (coro) coro.destroy(); }
+    
+    // 禁止拷贝，允许移动
+    Generator(const Generator&) = delete;
+    Generator& operator=(const Generator&) = delete;
+    Generator(Generator&& other) noexcept : coro(other.coro) {
+        other.coro = {};
+    }
+    Generator& operator=(Generator&& other) noexcept {
+        if (this != &other) {
+            if (coro) coro.destroy();
+            coro = other.coro;
+            other.coro = {};
+        }
+        return *this;
+    }
+    
+    // 迭代器支持
+    struct iterator {
+        std::coroutine_handle<promise_type> coro;
+        bool done;
+        
+        iterator(std::coroutine_handle<promise_type> h, bool d) : coro(h), done(d) {
+            if (!done) {
+                coro.resume();
+                done = coro.done();
+            }
+        }
+        
+        iterator& operator++() {
+            coro.resume();
+            done = coro.done();
+            return *this;
+        }
+        
+        T operator*() const {
+            return coro.promise().current_value;
+        }
+        
+        bool operator!=(const iterator& other) const {
+            return done != other.done;
+        }
+    };
+    
+    iterator begin() {
+        return iterator{coro, false};
+    }
+    
+    iterator end() {
+        return iterator{coro, true};
+    }
+};
+
+// 2. 斐波那契生成器
+Generator<int> fibonacci(int n) {
+    int a = 0, b = 1;
+    for (int i = 0; i < n; ++i) {
+        co_yield a;
+        int temp = a + b;
+        a = b;
+        b = temp;
+    }
+}
+
+// 3. 范围生成器
+Generator<int> range(int start, int end, int step = 1) {
+    for (int i = start; i < end; i += step) {
+        co_yield i;
+    }
+}
+
+// 4. 异步任务协程
+template<typename T>
+struct Task {
+    struct promise_type {
+        T result;
+        std::exception_ptr exception;
+        
+        Task get_return_object() {
+            return Task{std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+        
+        std::suspend_always initial_suspend() { return {}; }
+        std::suspend_always final_suspend() noexcept { return {}; }
+        
+        void return_value(T value) {
+            result = value;
+        }
+        
+        void unhandled_exception() {
+            exception = std::current_exception();
+        }
+    };
+    
+    std::coroutine_handle<promise_type> coro;
+    
+    Task(std::coroutine_handle<promise_type> h) : coro(h) {}
+    ~Task() { if (coro) coro.destroy(); }
+    
+    Task(const Task&) = delete;
+    Task& operator=(const Task&) = delete;
+    Task(Task&& other) noexcept : coro(other.coro) {
+        other.coro = {};
+    }
+    Task& operator=(Task&& other) noexcept {
+        if (this != &other) {
+            if (coro) coro.destroy();
+            coro = other.coro;
+            other.coro = {};
+        }
+        return *this;
+    }
+    
+    bool await_ready() const { return coro.done(); }
+    
+    void await_suspend(std::coroutine_handle<> awaiting_coro) {
+        coro.resume();
+    }
+    
+    T await_resume() {
+        if (coro.promise().exception) {
+            std::rethrow_exception(coro.promise().exception);
+        }
+        return coro.promise().result;
+    }
+};
+
+// 5. 模拟异步操作
+Task<int> async_operation(int value) {
+    // 模拟异步计算
+    co_return value * value;
+}
+
+Task<int> async_sum(int a, int b) {
+    auto task_a = async_operation(a);
+    auto task_b = async_operation(b);
+    
+    int result_a = co_await task_a;
+    int result_b = co_await task_b;
+    
+    co_return result_a + result_b;
+}
+
+// 6. 协程状态机
+struct StateMachine {
+    struct promise_type {
+        int state = 0;
+        
+        StateMachine get_return_object() {
+            return StateMachine{std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+        
+        std::suspend_always initial_suspend() { return {}; }
+        std::suspend_always final_suspend() noexcept { return {}; }
+        
+        std::suspend_always yield_value(int s) {
+            state = s;
+            return {};
+        }
+        
+        void return_void() {}
+        void unhandled_exception() {}
+    };
+    
+    std::coroutine_handle<promise_type> coro;
+    
+    StateMachine(std::coroutine_handle<promise_type> h) : coro(h) {}
+    ~StateMachine() { if (coro) coro.destroy(); }
+    
+    StateMachine(const StateMachine&) = delete;
+    StateMachine& operator=(const StateMachine&) = delete;
+    StateMachine(StateMachine&& other) noexcept : coro(other.coro) {
+        other.coro = {};
+    }
+    StateMachine& operator=(StateMachine&& other) noexcept {
+        if (this != &other) {
+            if (coro) coro.destroy();
+            coro = other.coro;
+            other.coro = {};
+        }
+        return *this;
+    }
+    
+    void resume() {
+        if (coro && !coro.done()) {
+            coro.resume();
+        }
+    }
+    
+    int get_state() const {
+        return coro.promise().state;
+    }
+    
+    bool is_done() const {
+        return coro.done();
+    }
+};
+
+StateMachine state_machine() {
+    co_yield 1;  // 状态1
+    co_yield 2;  // 状态2
+    co_yield 3;  // 状态3
+}
+
+// 7. 协程异常处理
+Generator<int> safe_generator() {
+    try {
+        for (int i = 0; i < 5; ++i) {
+            if (i == 3) {
+                throw std::runtime_error("Error at i=3");
+            }
+            co_yield i;
+        }
+    } catch (const std::exception& e) {
+        std::cout << "Caught exception: " << e.what() << std::endl;
+    }
+}
+
+// 8. 协程组合
+Generator<int> combined_generator() {
+    // 生成偶数
+    for (int i = 0; i < 10; i += 2) {
+        co_yield i;
+    }
+    
+    // 生成奇数
+    for (int i = 1; i < 10; i += 2) {
+        co_yield i;
+    }
+}
+
+int main() {
+    std::cout << "=== Basic Generator ===" << std::endl;
+    
+    auto fib = fibonacci(10);
+    std::cout << "Fibonacci sequence: ";
+    for (auto n : fib) {
+        std::cout << n << " ";
+    }
+    std::cout << std::endl;
+    
+    std::cout << "\n=== Range Generator ===" << std::endl;
+    
+    auto rng = range(1, 11, 2);
+    std::cout << "Range 1-10 step 2: ";
+    for (auto n : rng) {
+        std::cout << n << " ";
+    }
+    std::cout << std::endl;
+    
+    std::cout << "\n=== Async Task ===" << std::endl;
+    
+    auto task = async_sum(3, 4);
+    std::cout << "Async sum result: " << task.await_resume() << std::endl;
+    
+    std::cout << "\n=== State Machine ===" << std::endl;
+    
+    auto sm = state_machine();
+    while (!sm.is_done()) {
+        std::cout << "Current state: " << sm.get_state() << std::endl;
+        sm.resume();
+    }
+    
+    std::cout << "\n=== Exception Handling ===" << std::endl;
+    
+    auto safe_gen = safe_generator();
+    std::cout << "Safe generator: ";
+    for (auto n : safe_gen) {
+        std::cout << n << " ";
+    }
+    std::cout << std::endl;
+    
+    std::cout << "\n=== Combined Generator ===" << std::endl;
+    
+    auto combined = combined_generator();
+    std::cout << "Combined sequence: ";
+    for (auto n : combined) {
+        std::cout << n << " ";
+    }
+    std::cout << std::endl;
+    
+    return 0;
+}
+
+/*
+协程要点总结：
+
+1. 核心概念：
+   - promise_type: 协程的承诺类型
+   - coroutine_handle: 协程句柄
+   - 挂起点: 协程暂停执行的位置
+   - 等待体: 控制协程恢复的对象
+
+2. 关键字：
+   - co_await: 等待异步操作
+   - co_yield: 产生值并暂停
+   - co_return: 返回结果并结束
+
+3. 主要应用：
+   - 生成器模式
+   - 异步编程
+   - 状态机
+   - 流处理
+
+4. 优势：
+   - 更直观的异步代码
+   - 避免回调地狱
+   - 更好的错误处理
+   - 组合性强
+
+5. 注意事项：
+   - 协程句柄的生命期管理
+   - 异常安全
+   - 性能考虑
+   - 编译器支持
+*/
